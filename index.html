@@ -3,29 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Personal AI</title>
+    <title>Multi-Model AI Assistant</title>
     <style>
         body { background: #121212; color: white; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 10px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
         
+        /* Chat Area */
         #chat { flex-grow: 1; overflow-y: auto; padding: 15px; margin-bottom: 10px; border-radius: 12px; background: #1e1e1e; display: flex; flex-direction: column; gap: 15px; border: 1px solid #333; }
 
-        /* Bubble Styles */
-        .msg { max-width: 80%; padding: 10px 14px 25px 14px; border-radius: 18px; line-height: 1.4; font-size: 15px; position: relative; }
+        /* Bubble UI */
+        .msg { max-width: 80%; padding: 10px 14px 25px 14px; border-radius: 18px; line-height: 1.4; font-size: 15px; position: relative; word-wrap: break-word; }
         .user-msg { align-self: flex-end; background: #007bff; color: white; border-bottom-right-radius: 4px; }
         .ai-msg { align-self: flex-start; background: #333; color: #e0e0e0; border-bottom-left-radius: 4px; }
-
-        /* Timestamp Style */
-        .timestamp { position: absolute; bottom: 5px; right: 12px; font-size: 10px; opacity: 0.6; font-weight: normal; }
+        .timestamp { position: absolute; bottom: 5px; right: 12px; font-size: 10px; opacity: 0.6; }
         .ai-msg .timestamp { left: 12px; right: auto; }
 
+        /* Attachment Bar */
+        #attachmentBar { display: none; background: #252525; padding: 8px 12px; border-radius: 8px 8px 0 0; border: 1px solid #444; border-bottom: none; align-items: center; gap: 10px; }
+
+        /* Inputs */
         #settings { background: #252525; padding: 15px; border-radius: 8px; margin-bottom: 10px; display: none; border: 1px solid #444; }
-        input, button { padding: 12px; border-radius: 8px; border: none; width: 100%; box-sizing: border-box; font-size: 16px; }
-        input { background: #333; color: white; border: 1px solid #555; }
-        button { background: #007bff; color: white; font-weight: bold; cursor: pointer; }
-        .key-btn { background: #444; margin-bottom: 10px; width: auto; align-self: flex-start; padding: 8px 15px; }
-        .input-area { display: flex; gap: 8px; }
-        .input-area input { flex-grow: 1; }
-        .input-area button { width: auto; }
+        .input-area { display: flex; gap: 8px; background: #252525; padding: 10px; border-radius: 0 0 8px 8px; border: 1px solid #444; }
+        input[type="text"] { flex-grow: 1; background: #333; color: white; border: 1px solid #555; padding: 10px; border-radius: 8px; }
+        button { padding: 10px 15px; border-radius: 8px; border: none; background: #007bff; color: white; font-weight: bold; cursor: pointer; }
+        .key-btn { background: #444; margin-bottom: 10px; width: auto; align-self: flex-start; }
     </style>
 </head>
 <body>
@@ -35,18 +35,27 @@
     <div id="settings">
         <label>Gemini API Key:</label>
         <input type="password" id="apiKey" placeholder="Paste key here...">
-        <button onclick="saveKey()">💾 Save Key to Phone</button>
+        <button onclick="saveKey()">💾 Save Key</button>
     </div>
 
     <div id="chat"></div>
 
+    <div id="attachmentBar">
+        <span id="fileIcon">📄</span>
+        <span id="fileName">file.pdf</span>
+        <button onclick="clearFile()" style="background:none; color:#ff4d4d; padding:0">✕</button>
+    </div>
+
     <div class="input-area">
-        <input type="text" id="userInput" placeholder="Message...">
+        <input type="file" id="fileInput" style="display:none" accept="image/*,.pdf,text/plain" onchange="handleFileSelect(this)">
+        <button type="button" onclick="document.getElementById('fileInput').click()">📎</button>
+        <input type="text" id="userInput" placeholder="Message your AI...">
         <button onclick="sendMessage()">Send</button>
     </div>
 
     <script>
         let chatHistory = [];
+        let currentFileData = null;
 
         function toggleSettings() {
             const s = document.getElementById('settings');
@@ -55,56 +64,83 @@
 
         function saveKey() {
             const key = document.getElementById('apiKey').value.trim();
-            if(!key) return;
-            localStorage.setItem('gemini_api_key', key);
-            alert("Key saved!");
-            toggleSettings();
+            if(key) {
+                localStorage.setItem('gemini_api_key', key);
+                alert("Key saved!");
+                toggleSettings();
+            }
         }
 
-        // Helper function to get current time and date
+        // 1. The File Handler Logic
+        function handleFileSelect(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                // Store file data for sending
+                currentFileData = {
+                    mime_type: file.type,
+                    data: e.target.result.split(',')[1] // Extract Base64 string
+                };
+                
+                // Show Attachment Bar
+                document.getElementById('fileName').innerText = file.name;
+                document.getElementById('fileIcon').innerText = file.type.includes('image') ? '🖼️' : '📄';
+                document.getElementById('attachmentBar').style.display = 'flex';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearFile() {
+            currentFileData = null;
+            document.getElementById('fileInput').value = "";
+            document.getElementById('attachmentBar').style.display = 'none';
+        }
+
         function getTimestamp() {
-            return new Date().toLocaleString([], { 
-                month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' 
-            });
+            return new Date().toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
         }
 
+        // 2. The Multimodal Messenger Logic
         async function sendMessage() {
             const key = localStorage.getItem('gemini_api_key');
             const input = document.getElementById('userInput');
             const chat = document.getElementById('chat');
-            if (!key || !input.value) return;
+            if (!key || (!input.value && !currentFileData)) return;
 
-            const message = input.value;
+            const text = input.value;
             const time = getTimestamp();
+            
+            // Add to UI
+            chat.innerHTML += `<div class="user-msg msg">${text || "[File Sent]"}<span class="timestamp">${time}</span></div>`;
+            
+            // Prepare API "Parts"
+            let messageParts = [{ text: text || "What is in this file?" }];
+            if (currentFileData) {
+                messageParts.push({ inline_data: currentFileData });
+            }
 
-            // 1. Add User Message to UI & History
-            chatHistory.push({ role: "user", parts: [{ text: message }] });
-            chat.innerHTML += `<div class="user-msg msg">${message}<span class="timestamp">${time}</span></div>`;
+            chatHistory.push({ role: "user", parts: messageParts });
             input.value = "";
+            clearFile();
             chat.scrollTop = chat.scrollHeight;
 
             try {
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${key}`, {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        system_instruction: {
-                            parts: [{ text: "You are a helpful assistant with a 'Mirror Style' personality. Match user length/energy. Vibe like Claude/Gemini." }]
-                        },
-                        contents: chatHistory
-                    })
+                    body: JSON.stringify({ contents: chatHistory })
                 });
 
                 const data = await response.json();
                 const aiResponse = data.candidates[0].content.parts[0].text;
-                const aiTime = getTimestamp();
-
-                // 2. Add AI Response to UI & History
+                
                 chatHistory.push({ role: "model", parts: [{ text: aiResponse }] });
-                chat.innerHTML += `<div class="ai-msg msg">${aiResponse}<span class="timestamp">${aiTime}</span></div>`;
+                chat.innerHTML += `<div class="ai-msg msg">${aiResponse}<span class="timestamp">${getTimestamp()}</span></div>`;
                 chat.scrollTop = chat.scrollHeight;
             } catch (e) {
-                chat.innerHTML += `<div class="ai-msg msg">Error connecting...</div>`;
+                chat.innerHTML += `<div class="ai-msg msg">System Error: Check API key or connection.</div>`;
             }
         }
     </script>
