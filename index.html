@@ -15,6 +15,7 @@
         .input-area { display: flex; gap: 5px; }
         .input-area input { flex-grow: 1; }
         .input-area button { width: auto; }
+        pre { white-space: pre-wrap; word-wrap: break-word; background: #2d2d2d; padding: 10px; border-radius: 5px; }
     </style>
 </head>
 <body>
@@ -43,7 +44,8 @@
         }
 
         function saveKey() {
-            const key = document.getElementById('apiKey').value;
+            const key = document.getElementById('apiKey').value.trim();
+            if(!key) return alert("Please enter a key");
             localStorage.setItem('gemini_api_key', key);
             alert("Key saved locally!");
             toggleSettings();
@@ -75,12 +77,18 @@
                 });
 
                 const data = await response.json();
-                const aiResponse = data.candidates[0].content.parts[0].text;
                 
-                chat.innerHTML += `<p><b>AI:</b> ${aiResponse}</p>`;
+                if (data.error) {
+                    chat.innerHTML += `<p style="color:orange"><b>API Error:</b> ${data.error.message}</p>`;
+                } else {
+                    const aiResponse = data.candidates[0].content.parts[0].text;
+                    // Using <pre> to handle code formatting better
+                    chat.innerHTML += `<div><b>AI:</b><pre>${aiResponse}</pre></div>`;
+                }
+                
                 chat.scrollTop = chat.scrollHeight;
             } catch (error) {
-                chat.innerHTML += `<p style="color:red"><b>Error:</b> Check your key or connection.</p>`;
+                chat.innerHTML += `<p style="color:red"><b>System Error:</b> Failed to connect. Check internet.</p>`;
             }
         }
     </script>
