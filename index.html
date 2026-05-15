@@ -11,39 +11,44 @@
         .user-msg { align-self: flex-end; background: #007bff; color: white; border-bottom-right-radius: 4px; }
         .ai-msg { align-self: flex-start; background: #333; color: #e0e0e0; border-bottom-left-radius: 4px; }
         .timestamp { position: absolute; bottom: 5px; right: 12px; font-size: 10px; opacity: 0.6; }
-        .ai-msg .timestamp { left: 12px; right: auto; }
-        #settings { background: #252525; padding: 15px; border-radius: 8px; margin-bottom: 10px; display: none; border: 1px solid #444; }
         .input-area { display: flex; gap: 8px; background: #252525; padding: 10px; border-radius: 8px; border: 1px solid #444; align-items: center; }
-        input[type="text"] { flex-grow: 1; background: #333; color: white; border: 1px solid #555; padding: 10px; border-radius: 8px; }
+        input[type="text"] { flex-grow: 1; background: #333; color: white; border: 1px solid #555; padding: 10px; border-radius: 8px; outline: none; }
+        #settings { background: #252525; padding: 15px; border-radius: 8px; margin-bottom: 10px; display: none; border: 1px solid #444; }
         select { background: #333; color: white; border: 1px solid #555; padding: 8px; border-radius: 8px; cursor: pointer; }
-        button { padding: 10px 15px; border-radius: 8px; border: none; background: #007bff; color: white; font-weight: bold; cursor: pointer; }
+        .icon-btn { background: none; border: none; font-size: 20px; cursor: pointer; color: #bbb; padding: 5px; }
+        .icon-btn:hover { color: white; }
     </style>
 </head>
 <body>
 
-    <button onclick="toggleSettings()" style="background:#444; margin-bottom:10px; width:fit-content">⚙️ Settings</button>
+    <button onclick="toggleSettings()" style="background:#444; color:white; border:none; padding:8px; border-radius:5px; margin-bottom:10px; cursor:pointer;">⚙️ Settings</button>
 
     <div id="settings">
         <label>Gemini API Key:</label>
-        <input type="password" id="geminiKey" placeholder="Paste Gemini key...">
-        <label style="display:block; margin-top:10px;">Claude API Key:</label>
-        <input type="password" id="claudeKey" placeholder="Paste Claude key...">
-        <button onclick="saveKeys()" style="margin-top:10px; width:100%">💾 Save Keys</button>
+        <input type="password" id="geminiKey" style="width:90%; margin-bottom:10px;">
+        <label style="display:block;">Claude API Key:</label>
+        <input type="password" id="claudeKey" style="width:90%; margin-bottom:10px;">
+        <button onclick="saveKeys()" style="width:100%; background:#28a745; color:white; border:none; padding:10px; border-radius:5px;">💾 Save Keys</button>
     </div>
 
     <div id="chat"></div>
 
     <div class="input-area">
+        <input type="file" id="fileInput" style="display:none" accept="image/*" onchange="updateFileStatus()">
+        <button type="button" class="icon-btn" onclick="document.getElementById('fileInput').click()" title="Attach Image">📎</button>
+        
         <select id="modelSelect">
             <option value="gemini">Gemini 3 Flash</option>
             <option value="claude">Claude 3.5 Sonnet</option>
         </select>
-        <input type="text" id="userInput" placeholder="Ask anything...">
-        <button onclick="sendMessage()">Send</button>
+
+        <input type="text" id="userInput" placeholder="Message..." onkeypress="if(event.key==='Enter') sendMessage()">
+        <button onclick="sendMessage()" style="background:#007bff; color:white; border:none; padding:10px 20px; border-radius:8px; font-weight:bold;">Send</button>
     </div>
 
     <script>
-        let chatHistory = []; // We'll keep history in Gemini's format as our "base"
+        let chatHistory = [];
+        let currentFile = null;
 
         function toggleSettings() {
             const s = document.getElementById('settings');
@@ -57,33 +62,46 @@
             toggleSettings();
         }
 
-        function getTimestamp() {
-            return new Date().toLocaleString([], { hour: '2-digit', minute: '2-digit' });
+        function updateFileStatus() {
+            const file = document.getElementById('fileInput').files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    currentFile = {
+                        mimeType: file.type,
+                        base64: e.target.result.split(',')[1]
+                    };
+                    alert("Image attached: " + file.name);
+                };
+                reader.readAsDataURL(file);
+            }
         }
 
         async function sendMessage() {
             const model = document.getElementById('modelSelect').value;
             const input = document.getElementById('userInput');
-            const chat = document.getElementById('chat');
             const text = input.value;
-            if (!text) return;
+            if (!text && !currentFile) return;
 
-            // 1. Show user message
-            chat.innerHTML += `<div class="user-msg msg">${text}<span class="timestamp">${getTimestamp()}</span></div>`;
-            chatHistory.push({ role: "user", parts: [{ text: text }] });
+            // Update UI
+            document.getElementById('chat').innerHTML += `<div class="user-msg msg">${text || "[Image]"}<span class="timestamp">${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div>`;
             input.value = "";
-            chat.scrollTop = chat.scrollHeight;
 
-            // 2. Route the Request 🛰️
             let url, headers, body;
-            
+
             if (model === "gemini") {
                 const key = localStorage.getItem('gemini_api_key');
-                url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${key}`;
+                url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
                 headers = { "Content-Type": "application/json" };
+                
+                let parts = [{ text: text }];
+                if (currentFile) {
+                    parts.push({ inline_data: { mime_type: currentFile.mimeType, data: currentFile.base64 } });
+                }
+                chatHistory.push({ role: "user", parts: parts });
                 body = JSON.stringify({ contents: chatHistory });
+
             } else {
-                // Claude Logic
                 const key = localStorage.getItem('claude_api_key');
                 url = `https://api.anthropic.com/v1/messages`;
                 headers = {
@@ -92,32 +110,34 @@
                     "anthropic-version": "2023-06-01",
                     "dangerously-allow-browser": "true"
                 };
-                // Translate history for Claude 🔄
-                const claudeMessages = chatHistory.map(m => ({
-                    role: m.role === "model" ? "assistant" : "user",
-                    content: m.parts[0].text
-                }));
+
+                // Format messages for Claude
+                let content = [{ type: "text", text: text || "What is in this image?" }];
+                if (currentFile) {
+                    content.push({
+                        type: "image",
+                        source: { type: "base64", media_type: currentFile.mimeType, data: currentFile.base64 }
+                    });
+                }
+                
+                // Simplified history mapping for this example
+                const claudeMessages = [{ role: "user", content: content }];
                 body = JSON.stringify({ model: "claude-3-5-sonnet-20240620", max_tokens: 1024, messages: claudeMessages });
             }
 
             try {
                 const response = await fetch(url, { method: "POST", headers: headers, body: body });
                 const data = await response.json();
-                
-                // 3. Unwrap the Response 📥
-                let aiText = "";
-                if (model === "gemini") {
-                    aiText = data.candidates[0].content.parts[0].text;
-                } else {
-                    aiText = data.content[0].text;
-                }
+                const aiText = model === "gemini" ? data.candidates[0].content.parts[0].text : data.content[0].text;
 
-                chatHistory.push({ role: "model", parts: [{ text: aiText }] });
-                chat.innerHTML += `<div class="ai-msg msg">${aiText}<span class="timestamp">${getTimestamp()}</span></div>`;
+                document.getElementById('chat').innerHTML += `<div class="ai-msg msg">${aiText}<span class="timestamp">${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div>`;
+                if (model === "gemini") chatHistory.push({ role: "model", parts: [{ text: aiText }] });
             } catch (e) {
-                chat.innerHTML += `<div class="ai-msg msg" style="color:red">Error: Check your API keys or console.</div>`;
+                console.error(e);
             }
-            chat.scrollTop = chat.scrollHeight;
+            
+            currentFile = null; // Clear file after sending
+            document.getElementById('chat').scrollTop = document.getElementById('chat').scrollHeight;
         }
     </script>
 </body>
