@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Universal AI Assistant</title>
+    <title>Gemini 3 Flash Assistant</title>
     <style>
         body { background: #121212; color: white; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 10px; display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
         #chat { flex-grow: 1; overflow-y: auto; padding: 15px; margin-bottom: 10px; border-radius: 12px; background: #1e1e1e; display: flex; flex-direction: column; gap: 15px; border: 1px solid #333; }
@@ -11,39 +11,54 @@
         .user-msg { align-self: flex-end; background: #007bff; color: white; border-bottom-right-radius: 4px; }
         .ai-msg { align-self: flex-start; background: #333; color: #e0e0e0; border-bottom-left-radius: 4px; }
         .timestamp { position: absolute; bottom: 5px; right: 12px; font-size: 10px; opacity: 0.6; }
+        #preview-container { display: none; padding: 10px; background: #252525; border-radius: 8px; margin-bottom: 5px; position: relative; }
+        #image-preview { max-height: 80px; border-radius: 5px; border: 1px solid #444; }
         .input-area { display: flex; gap: 8px; background: #252525; padding: 10px; border-radius: 8px; border: 1px solid #444; align-items: center; }
         input[type="text"] { flex-grow: 1; background: #333; color: white; border: 1px solid #555; padding: 10px; border-radius: 8px; outline: none; }
         #settings { background: #252525; padding: 15px; border-radius: 8px; margin-bottom: 10px; display: none; border: 1px solid #444; }
-        select { background: #333; color: white; border: 1px solid #555; padding: 8px; border-radius: 8px; cursor: pointer; }
         .icon-btn { background: none; border: none; font-size: 20px; cursor: pointer; color: #bbb; padding: 5px; }
-        .icon-btn:hover { color: white; }
+
+        /* 🎡 Loading Spinner Styles */
+        .spinner {
+            width: 18px;
+            height: 18px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-top: 3px solid white;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            display: none; /* Hidden by default */
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        
+        #sendBtn.loading .spinner { display: inline-block; }
+        #sendBtn.loading .btn-text { display: none; }
     </style>
 </head>
 <body>
 
-    <button onclick="toggleSettings()" style="background:#444; color:white; border:none; padding:8px; border-radius:5px; margin-bottom:10px; cursor:pointer;">⚙️ Settings</button>
+    <button onclick="toggleSettings()" style="background:#444; color:white; border:none; padding:8px; border-radius:5px; margin-bottom:10px; cursor:pointer;">⚙️ API Settings</button>
 
     <div id="settings">
-        <label>Gemini API Key:</label>
-        <input type="password" id="geminiKey" style="width:90%; margin-bottom:10px;">
-        <label style="display:block;">Claude API Key:</label>
-        <input type="password" id="claudeKey" style="width:90%; margin-bottom:10px;">
-        <button onclick="saveKeys()" style="width:100%; background:#28a745; color:white; border:none; padding:10px; border-radius:5px;">💾 Save Keys</button>
+        <label>Gemini 3 API Key:</label>
+        <input type="password" id="geminiKey" style="width:100%; margin: 10px 0; background:#333; color:white; border:1px solid #555; padding:8px; border-radius:5px;">
+        <button onclick="saveKey()" style="width:100%; background:#28a745; color:white; border:none; padding:10px; border-radius:5px; cursor:pointer;">Save Key</button>
     </div>
 
     <div id="chat"></div>
 
-    <div class="input-area">
-        <input type="file" id="fileInput" style="display:none" accept="image/*" onchange="updateFileStatus()">
-        <button type="button" class="icon-btn" onclick="document.getElementById('fileInput').click()" title="Attach Image">📎</button>
-        
-        <select id="modelSelect">
-            <option value="gemini">Gemini 3 Flash</option>
-            <option value="claude">Claude 3.5 Sonnet</option>
-        </select>
+    <div id="preview-container">
+        <img id="image-preview" src="">
+        <button onclick="clearFile()" style="position:absolute; top:5px; right:5px; background:red; color:white; border:none; border-radius:50%; width:22px; height:22px; cursor:pointer;">×</button>
+    </div>
 
-        <input type="text" id="userInput" placeholder="Message..." onkeypress="if(event.key==='Enter') sendMessage()">
-        <button onclick="sendMessage()" style="background:#007bff; color:white; border:none; padding:10px 20px; border-radius:8px; font-weight:bold;">Send</button>
+    <div class="input-area">
+        <input type="file" id="fileInput" style="display:none" accept="image/*" onchange="handleFileSelect(this)">
+        <button type="button" class="icon-btn" onclick="document.getElementById('fileInput').click()">📎</button>
+        <input type="text" id="userInput" placeholder="Ask Gemini 3..." onkeypress="if(event.key==='Enter') sendMessage()">
+        <button id="sendBtn" onclick="sendMessage()" style="background:#007bff; color:white; border:none; padding:10px 20px; border-radius:8px; font-weight:bold; cursor:pointer; min-width:80px; display:flex; justify-content:center; align-items:center;">
+            <span class="btn-text">Send</span>
+            <div class="spinner"></div>
+        </button>
     </div>
 
     <script>
@@ -55,89 +70,81 @@
             s.style.display = s.style.display === 'none' ? 'block' : 'none';
         }
 
-        function saveKeys() {
+        function saveKey() {
             localStorage.setItem('gemini_api_key', document.getElementById('geminiKey').value.trim());
-            localStorage.setItem('claude_api_key', document.getElementById('claudeKey').value.trim());
-            alert("Keys saved!");
+            alert("Key updated!");
             toggleSettings();
         }
 
-        function updateFileStatus() {
-            const file = document.getElementById('fileInput').files[0];
+        function handleFileSelect(input) {
+            const file = input.files[0];
             if (file) {
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    currentFile = {
-                        mimeType: file.type,
-                        base64: e.target.result.split(',')[1]
-                    };
-                    alert("Image attached: " + file.name);
+                    currentFile = { mimeType: file.type, data: e.target.result.split(',')[1] };
+                    document.getElementById('image-preview').src = e.target.result;
+                    document.getElementById('preview-container').style.display = 'block';
                 };
                 reader.readAsDataURL(file);
             }
         }
 
+        function clearFile() {
+            currentFile = null;
+            document.getElementById('fileInput').value = "";
+            document.getElementById('preview-container').style.display = 'none';
+        }
+
         async function sendMessage() {
-            const model = document.getElementById('modelSelect').value;
+            const key = localStorage.getItem('gemini_api_key');
             const input = document.getElementById('userInput');
+            const btn = document.getElementById('sendBtn');
             const text = input.value;
+            
             if (!text && !currentFile) return;
+            if (!key) return alert("Enter your API key in Settings first!");
 
-            // Update UI
-            document.getElementById('chat').innerHTML += `<div class="user-msg msg">${text || "[Image]"}<span class="timestamp">${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div>`;
+            // 1. Enter Loading State
+            btn.classList.add('loading');
+            btn.disabled = true;
+
+            const chat = document.getElementById('chat');
+            const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            
+            chat.innerHTML += `<div class="user-msg msg">${text || "[Image]"}<span class="timestamp">${time}</span></div>`;
             input.value = "";
+            chat.scrollTop = chat.scrollHeight;
 
-            let url, headers, body;
-
-            if (model === "gemini") {
-                const key = localStorage.getItem('gemini_api_key');
-                url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`;
-                headers = { "Content-Type": "application/json" };
-                
-                let parts = [{ text: text }];
-                if (currentFile) {
-                    parts.push({ inline_data: { mime_type: currentFile.mimeType, data: currentFile.base64 } });
-                }
-                chatHistory.push({ role: "user", parts: parts });
-                body = JSON.stringify({ contents: chatHistory });
-
-            } else {
-                const key = localStorage.getItem('claude_api_key');
-                url = `https://api.anthropic.com/v1/messages`;
-                headers = {
-                    "Content-Type": "application/json",
-                    "x-api-key": key,
-                    "anthropic-version": "2023-06-01",
-                    "dangerously-allow-browser": "true"
-                };
-
-                // Format messages for Claude
-                let content = [{ type: "text", text: text || "What is in this image?" }];
-                if (currentFile) {
-                    content.push({
-                        type: "image",
-                        source: { type: "base64", media_type: currentFile.mimeType, data: currentFile.base64 }
-                    });
-                }
-                
-                // Simplified history mapping for this example
-                const claudeMessages = [{ role: "user", content: content }];
-                body = JSON.stringify({ model: "claude-3-5-sonnet-20240620", max_tokens: 1024, messages: claudeMessages });
+            let parts = [{ text: text || "Analyze this image" }];
+            if (currentFile) {
+                parts.push({ inline_data: { mime_type: currentFile.mimeType, data: currentFile.data } });
+                clearFile();
             }
+
+            chatHistory.push({ role: "user", parts: parts });
 
             try {
-                const response = await fetch(url, { method: "POST", headers: headers, body: body });
-                const data = await response.json();
-                const aiText = model === "gemini" ? data.candidates[0].content.parts[0].text : data.content[0].text;
+                // Using the Flash endpoint (supports latest Gemini 3 tech)
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${key}`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ contents: chatHistory })
+                });
 
-                document.getElementById('chat').innerHTML += `<div class="ai-msg msg">${aiText}<span class="timestamp">${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span></div>`;
-                if (model === "gemini") chatHistory.push({ role: "model", parts: [{ text: aiText }] });
+                const data = await response.json();
+                const aiText = data.candidates[0].content.parts[0].text;
+
+                chatHistory.push({ role: "model", parts: [{ text: aiText }] });
+                chat.innerHTML += `<div class="ai-msg msg">${aiText}<span class="timestamp">${time}</span></div>`;
             } catch (e) {
+                chat.innerHTML += `<div class="ai-msg msg" style="color:#ff6b6b">Error: Could not reach Gemini. Check your key.</div>`;
                 console.error(e);
+            } finally {
+                // 3. Exit Loading State
+                btn.classList.remove('loading');
+                btn.disabled = false;
+                chat.scrollTop = chat.scrollHeight;
             }
-            
-            currentFile = null; // Clear file after sending
-            document.getElementById('chat').scrollTop = document.getElementById('chat').scrollHeight;
         }
     </script>
 </body>
