@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Personal AI</title>
+    <style>
+        /* This makes it look like a dark-mode app */
+        body { background: #121212; color: white; font-family: sans-serif; margin: 0; padding: 10px; }
+        #chat { height: 70vh; overflow-y: auto; border: 1px solid #333; padding: 10px; margin-bottom: 10px; }
+        #settings { background: #1e1e1e; padding: 15px; border-radius: 8px; margin-bottom: 10px; display: none; }
+        input, button { padding: 12px; border-radius: 5px; border: none; width: 100%; box-sizing: border-box; margin-top: 5px; }
+        button { background: #007bff; color: white; font-weight: bold; cursor: pointer; }
+        .key-btn { background: #333; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+    <button class="key-btn" onclick="toggleSettings()">⚙️ Settings (Save Key)</button>
+
+    <div id="settings">
+        <input type="password" id="apiKey" placeholder="Paste Gemini API Key here...">
+        <button onclick="saveKey()">💾 Save Key to Phone</button>
+    </div>
+
+    <div id="chat">
+        <p><i>System: Welcome! Save your API key in settings to start coding.</i></p>
+    </div>
+
+    <input type="text" id="userInput" placeholder="Type your coding question...">
+    <button onclick="sendMessage()">Send Message</button>
+
+    <script>
+        // These functions handle the "No Log Out" logic
+        function toggleSettings() {
+            const s = document.getElementById('settings');
+            s.style.display = s.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function saveKey() {
+            const key = document.getElementById('apiKey').value;
+            localStorage.setItem('gemini_api_key', key);
+            alert("Key saved! It will stay here even if you refresh.");
+            toggleSettings();
+        }
+
+        function sendMessage() {
+            const key = localStorage.getItem('gemini_api_key');
+            if (!key) {
+                alert("Please save your API key in settings first!");
+                return;
+            }
+            // Logic to talk to Gemini will go here next!
+            alert("Ready to talk to Gemini using your saved key!");
+        }
+    </script>
+</body>
+</html>
