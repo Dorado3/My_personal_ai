@@ -49,7 +49,7 @@
     </div>
 
     <div class="input-area">
-        <input type="file" id="fileInput" style="display:none" accept="image/*" onchange="handleFileSelect(this)">
+        <input type="file" id="fileInput" style="display:none" accept="image/*,text/html,text/plain,text/csv,text/css,application/javascript,application/json" onchange="handleFileSelect(this)">
         <button type="button" class="icon-btn" onclick="document.getElementById('fileInput').click()">📎</button>
         <input type="text" id="userInput" placeholder="Ask Gemini 3..." onkeypress="if(event.key==='Enter') sendMessage()">
         <button id="sendBtn" onclick="sendMessage()" style="background:#007bff; color:white; border:none; padding:10px 20px; border-radius:8px; font-weight:bold; cursor:pointer; min-width:80px; display:flex; justify-content:center; align-items:center;">
@@ -76,13 +76,43 @@
 
         function handleFileSelect(input) {
             const file = input.files[0];
-            if (file) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    currentFile = { mimeType: file.type, data: e.target.result.split(',')[1] };
+            if (!file) return;
+
+            const reader = new FileReader();
+            
+            // 🔍 Identify if the document is text-based
+            const isTextDoc = file.type.startsWith('text/') || 
+                              file.name.endsWith('.html') || 
+                              file.name.endsWith('.js') || 
+                              file.name.endsWith('.css') || 
+                              file.name.endsWith('.csv') ||
+                              file.name.endsWith('.json');
+
+            reader.onload = (e) => {
+                if (isTextDoc) {
+                    // Store as textual payload
+                    currentFile = { 
+                        type: "text", 
+                        name: file.name, 
+                        content: e.target.result 
+                    };
+                    // Text placeholder preview
+                    document.getElementById('image-preview').src = "https://via.placeholder.com/80?text=DOC";
+                } else {
+                    // Store as base64 asset payload
+                    currentFile = { 
+                        type: "image", 
+                        mimeType: file.type, 
+                        data: e.target.result.split(',')[1] 
+                    };
                     document.getElementById('image-preview').src = e.target.result;
-                    document.getElementById('preview-container').style.display = 'block';
-                };
+                }
+                document.getElementById('preview-container').style.display = 'block';
+            };
+
+            if (isTextDoc) {
+                reader.readAsText(file);
+            } else {
                 reader.readAsDataURL(file);
             }
         }
@@ -108,15 +138,29 @@
             const chat = document.getElementById('chat');
             const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
             
-            chat.innerHTML += `<div class="user-msg msg">${text || "[Image]"}<span class="timestamp">${time}</span></div>`;
+            // Determine client display text
+            let displayBody = text || "";
+            let parts = [];
+
+            if (currentFile) {
+                if (currentFile.type === "text") {
+                    // Append document structure explicitly within prompt window limits
+                    parts.push({ text: `[Attached File: ${currentFile.name}]\n${currentFile.content}` });
+                    if (text) parts.push({ text: text });
+                    displayBody = text ? `📄 ${currentFile.name}<br>${text}` : `📄 Analyzed ${currentFile.name}`;
+                } else if (currentFile.type === "image") {
+                    parts.push({ inline_data: { mime_type: currentFile.mimeType, data: currentFile.data } });
+                    parts.push({ text: text || "Analyze this image" });
+                    displayBody = text || "[Image]";
+                }
+                clearFile();
+            } else {
+                parts.push({ text: text });
+            }
+
+            chat.innerHTML += `<div class="user-msg msg">${displayBody}<span class="timestamp">${time}</span></div>`;
             input.value = "";
             chat.scrollTop = chat.scrollHeight;
-
-            let parts = [{ text: text || "Analyze this image" }];
-            if (currentFile) {
-                parts.push({ inline_data: { mime_type: currentFile.mimeType, data: currentFile.data } });
-                clearFile();
-            }
 
             chatHistory.push({ role: "user", parts: parts });
 
@@ -145,7 +189,6 @@
                     const aiText = data.candidates[0].content.parts[0].text;
                     chatHistory.push({ role: "model", parts: [{ text: aiText }] });
                     
-                    // ✨ Using marked.parse() to render the AI text
                     chat.innerHTML += `<div class="ai-msg msg">${marked.parse(aiText)}<span class="timestamp">${time}</span></div>`;
                     success = true;
                 } catch (e) {
